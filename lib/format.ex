@@ -1,47 +1,39 @@
 defmodule Format do
+  alias Format.{Compiler, Interpreter}
+
   defstruct [:fragments, :original, :mode, newline: false]
 
+  defmodule Specification do
+    defstruct [:fill, :align, :sign, :alternate, :width,
+               :grouping, :precision, :type]
+  end
+
+  defmacro __using__(_) do
+    quote do
+      import Format, only: [sigil_F: 2]
+      require Format
+    end
+  end
+
+  ## Public interface
+
+  def compile(format) when is_binary(format) do
+    {fragments, original, mode} = Compiler.compile(format)
+    %__MODULE__{fragments: fragments, original: original, mode: mode}
+  end
+
   defmacro sigil_F({:<<>>, _, [format]}, _modifiers) when is_binary(format) do
-    {fragments, original, mode} = Format.Compile.compile(format)
-    value = %__MODULE__{fragments: fragments, original: original, mode: mode}
-    Macro.escape(value)
+    Macro.escape(compile(format))
   end
 
-  def iodata(%__MODULE__{fragments: fragments} = format, args) do
-    args = prepare_args(args, format)
-    [interpret(fragments, args) | newline(format)]
+  def iodata(%__MODULE__{fragments: fragments, mode: mode} = format, args)
+      when is_list(args) or is_map(args) do
+    [apply(Interpreter, mode, [fragments, args]) | newline(format)]
   end
 
-  def chardata(%__MODULE__{fragments: fragments} = format, args) do
-    args = prepare_args(args, format)
-    [interpret(fragments, args) | newline(format)]
-  end
-
-  defp newline(%{newline: true}), do: [?\n]
-  defp newline(_), do: []
-
-  defp prepare_args(args, %{mode: :seq}) when is_list(args), do: args
-
-  defp interpret([binary | rest], args) when is_binary(binary) do
-    [binary | interpret(rest, args)]
-  end
-  defp interpret([:to_string | rest], [arg | args]) when is_list(arg) do
-    [arg | interpret(rest, args)]
-  end
-  defp interpret([:to_string | rest], [arg | args]) when is_binary(arg) do
-    [arg | interpret(rest, args)]
-  end
-  defp interpret([:to_string | rest], [arg | args]) do
-    [to_string(arg) | interpret(rest, args)]
-  end
-  defp interpret([:inspect | rest], [arg | args]) do
-    [inspect(arg) | interpret(rest, args)]
-  end
-  defp interpret([_format | _rest], []) do
-    raise ArgumentError, "too few arguments"
-  end
-  defp interpret([], []) do
-    []
+  def chardata(%__MODULE__{fragments: fragments, mode: mode} = format, args)
+      when is_list(args) do
+    [apply(Interpreter, mode, [fragments, args]) | newline(format)]
   end
 
   def string(format, args) do
@@ -60,6 +52,15 @@ defmodule Format do
   def binwrite(device \\ :stdio, format, args) do
     request(device, {:binwrite, format, args}, :binwrite)
   end
+
+  ## Formatting
+
+  defp newline(%{newline: true}), do: [?\n]
+  defp newline(_), do: []
+
+  defp append_newline(format), do: %{format | newline: true}
+
+  ## IO protocol handling
 
   defp request(device, request, func) do
     case request(device, request) do
@@ -145,12 +146,10 @@ defmodule Format do
   defp io_request(_pid, {:binwrite, format, args}) do
     {:put_chars, :latin1, __MODULE__, :iodata, [format, args]}
   end
-
-  defp append_newline(format), do: %{format | newline: true}
 end
 
 defimpl Inspect, for: Format do
   def inspect(format, _opts) do
-    "~F[" <> format.original <> "]"
+    "~F" <> Kernel.inspect(format.original, binaries: :as_strings)
   end
 end
