@@ -107,7 +107,7 @@ defmodule Format.Interpreter do
       value
       |> abs
       |> Integer.to_string(base)
-      # |> maybe_downcase(type == :hex)
+      |> maybe_downcase(type == :hex)
       |> group(grouping)
     formatted = [prefix | value]
     if width do
@@ -174,4 +174,14 @@ defmodule Format.Interpreter do
         raise ArgumentError, "#{inspect value} does not support custom formatting"
     end
   end
+
+  defp maybe_downcase(binary, true), do: downcase(binary, "")
+  defp maybe_downcase(binary, false), do: binary
+
+  defp downcase(<<>>, acc),
+    do: acc
+  defp downcase(<<char, rest::binary>>, acc) when char in ?A..?Z,
+    do: downcase(rest, acc <> <<char - ?A + ?a>>)
+  defp downcase(<<char, rest::binary>>, acc),
+    do: downcase(rest, acc <> <<char>>)
 end
