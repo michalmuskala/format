@@ -146,7 +146,8 @@ defmodule Format.Compiler do
   defp compile_grouping(rest),
     do: {nil, rest}
 
-  @integral   [decimal: "d", octal: "o", hex: "x", upper_hex: "X", char: "c"]
+  @integral   [decimal: "d", octal: "o", hex: "x", upper_hex: "X", char: "c",
+               binary: "b"]
   @fractional [float: "f", exponent: "e", upper_exponent: "E", general: "g",
                upper_general: "G"]
   @types      [debug: "?", string: "s"]
@@ -220,9 +221,10 @@ defmodule Format.Compiler do
   defp compile_zero(rest, sign, fill),
     do: {sign, fill, rest}
 
-  defp compile_sign("+" <> rest), do: {:+, rest}
-  defp compile_sign("-" <> rest), do: {:-, rest}
-  defp compile_sign(rest),        do: {nil, rest}
+  defp compile_sign("+" <> rest), do: {:plus, rest}
+  defp compile_sign("-" <> rest), do: {:minus, rest}
+  defp compile_sign(" " <> rest), do: {:space, rest}
+  defp compile_sign(rest),        do: {:minus, rest}
 
   @align [left: ?<, center: ?^, right: ?>]
 

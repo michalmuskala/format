@@ -44,7 +44,7 @@ defmodule Format.Interpreter do
   defp dispatch_format(:display, format, value),
     do: Format.Display.default(value, format)
   defp dispatch_format({:display, custom}, format, value),
-      do: custom_display(value, custom, format)
+    do: custom_display(value, custom, format)
 
   defp format_string(value, format) when is_binary(value) or is_list(value) do
     %{fill: fill, align: align, width: width, precision: precision} = format
@@ -84,23 +84,87 @@ defmodule Format.Interpreter do
     [left, value | right]
   end
 
+  defp format_integral(value, type, format) when is_integer(value) do
+    format_integer(value, type, format)
+  end
   defp format_integral(value, type, format) do
-    case Format.Integral.chardata(value, type, format) do
+    case Format.Integral.format(value, type, format) do
       {:ok, chardata} ->
         chardata
       {:error, integer} ->
-        format_integral(integer, type, format)
+        format_integer(integer, type, format)
     end
   end
 
+  defp format_integer(value, type, format) do
+    %{fill: fill, align: align, width: width,
+      sign: sign, grouping: grouping, alternate: alternate} = format
+    base_prefix = integer_base_prefix(alternate, type)
+    base = integer_base(type)
+    sign_prefix = integer_sign_prefix(sign, value >= 0)
+    prefix = [base_prefix | sign_prefix]
+    value =
+      value
+      |> abs
+      |> Integer.to_string(base)
+      # |> maybe_downcase(type == :hex)
+      |> group(grouping)
+    formatted = [prefix | value]
+    if width do
+      pad(formatted, IO.iodata_length(formatted), width, fill, align || :right)
+    else
+      formatted
+    end
+  end
+
+  defp group(value, nil), do: value
+  defp group(value, char) do
+    first_len = rem(byte_size(value), 4)
+    first_len = if first_len == 0, do: 4, else: first_len
+    <<first_part::binary-size(first_len), rest::binary>> = value
+    [first_part | do_group(rest, char)]
+  end
+
+  defp do_group("", _char), do: []
+  defp do_group(<<left::binary-4, rest::binary>>, char) do
+    [char, left | do_group(rest, char)]
+  end
+
+  defp integer_base(:hex), do: 16
+  defp integer_base(:upper_hex), do: 16
+  defp integer_base(:octal), do: 8
+  defp integer_base(:binary), do: 2
+  defp integer_base(:decimal), do: 10
+
+  defp integer_base_prefix(true, :hex), do: '0x'
+  defp integer_base_prefix(true, :upper_hex), do: '0x'
+  defp integer_base_prefix(true, :octal), do: '0o'
+  defp integer_base_prefix(true, :binary), do: '0b'
+  defp integer_base_prefix(_, _), do: ''
+
+  defp integer_sign_prefix(:plus, true), do: '+'
+  defp integer_sign_prefix(:plus, false), do: '-'
+  defp integer_sign_prefix(:minus, true), do: ''
+  defp integer_sign_prefix(:minus, false), do: '-'
+  defp integer_sign_prefix(:space, true), do: ' '
+  defp integer_sign_prefix(:space, false), do: '-'
+
+  defp format_fractional(value, type, format) when is_float(value) do
+    format_float(value, type, format)
+  end
+  defp format_fractional(value, type, format) when is_integer(value) do
+    format_float(value + 0.0, type, format)
+  end
   defp format_fractional(value, type, format) do
-    case Format.Fractional.chardata(value, type, format) do
+    case Format.Fractional.format(value, type, format) do
       {:ok, chardata} ->
         chardata
       {:error, float} ->
-        format_fractional(float, type, format)
+        format_float(float, type, format)
     end
   end
+
+  defp format_float(value, type, format), do: ''
 
   defp custom_display(value, custom, format) do
     case Format.Display.custom(value, custom, format) do
