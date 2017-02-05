@@ -1,7 +1,9 @@
 defprotocol Format.Display do
-  @spec default(term, Format.t) :: Format.chardata
-  def default(value, format)
+  @spec fmt(term, Format.t) :: Format.chardata
+  def fmt(value, format)
 
-  @spec custom(term, String.t, Format.t) :: {:ok, Format.chardata} | :error
-  def custom(value, custom, format)
+  @spec fmt(term, String.t, Format.t) :: {:ok, Format.chardata} | :error
+  def fmt(value, custom, format)
 end
+
+# TODO: protocol implementations

@@ -1,4 +1,6 @@
 defprotocol Format.Debug do
-  @spec debug(term, Format.t) :: Format.chardata
-  def debug(value, format)
+  @spec fmt(term, Format.t) :: Format.chardata
+  def fmt(value, format)
 end
+
+# TODO: how this should work?

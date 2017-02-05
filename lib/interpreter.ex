@@ -34,7 +34,7 @@ defmodule Format.Interpreter do
   end
 
   defp dispatch_format(:debug, format, value),
-    do: Format.Debug.debug(value, format)
+    do: Format.Debug.fmt(value, format)
   defp dispatch_format({:integral, type}, format, value),
     do: format_integral(value, type, format)
   defp dispatch_format({:fractional, type}, format, value),
@@ -42,9 +42,18 @@ defmodule Format.Interpreter do
   defp dispatch_format(:string, format, value),
     do: format_string(value, format)
   defp dispatch_format(:display, format, value),
-    do: Format.Display.default(value, format)
+    do: dispatch_display(value, format, [value, format])
   defp dispatch_format({:display, custom}, format, value),
-    do: custom_display(value, custom, format)
+    do: dispatch_display(value, format, [value, custom, format])
+
+  defp dispatch_display(value, format, _args) when is_integer(value),
+    do: format_integral(value, :decimal, format)
+  defp dispatch_display(value, format, _args) when is_float(value),
+    do: format_fractional(value, :float, format)
+  defp dispatch_display(value, format, _args) when is_binary(value) or is_list(value),
+    do: format_string(value, format)
+  defp dispatch_display(_value, _format, args),
+    do: apply(Format.Display, :fmt, args)
 
   defp format_string(value, format) when is_binary(value) or is_list(value) do
     %{fill: fill, align: align, width: width, precision: precision} = format
@@ -88,7 +97,7 @@ defmodule Format.Interpreter do
     format_integer(value, type, format)
   end
   defp format_integral(value, type, format) do
-    case Format.Integral.format(value, type, format) do
+    case Format.Integral.fmt(value, type, format) do
       {:ok, chardata} ->
         chardata
       {:error, integer} ->
@@ -156,7 +165,7 @@ defmodule Format.Interpreter do
     format_float(value + 0.0, type, format)
   end
   defp format_fractional(value, type, format) do
-    case Format.Fractional.format(value, type, format) do
+    case Format.Fractional.fmt(value, type, format) do
       {:ok, chardata} ->
         chardata
       {:error, float} ->
@@ -192,15 +201,6 @@ defmodule Format.Interpreter do
     do: '~g'
   defp erlang_format_float(type, prec) when type in [:general, :upper_general],
     do: '~.#{prec}g'
-
-  defp custom_display(value, custom, format) do
-    case Format.Display.custom(value, custom, format) do
-      {:ok, chardata} ->
-        chardata
-      :error ->
-        raise ArgumentError, "#{inspect value} does not support custom formatting"
-    end
-  end
 
   defp maybe_downcase(binary, true), do: downcase(binary, "")
   defp maybe_downcase(binary, false), do: binary

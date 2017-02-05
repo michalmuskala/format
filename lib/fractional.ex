@@ -1,10 +1,16 @@
 defprotocol Format.Fractional do
-  @spec format(term, atom, Format.t) :: {:ok, Format.chardata} | {:error, float()}
-  def format(value, type, format)
+  @spec fmt(term, atom, Format.t) :: {:ok, Format.chardata} | {:error, float()}
+  def fmt(value, type, format)
 end
 
 defimpl Format.Fractional, for: Float do
-  def format(value, _type, _format) do
+  def fmt(value, _type, _format) do
     {:error, value}
+  end
+end
+
+defimpl Format.Fractional, for: Integer do
+  def fmt(value, _type, _format) do
+    {:error, value + 0.0}
   end
 end
