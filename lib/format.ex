@@ -40,18 +40,13 @@ defmodule Format do
     Macro.escape(compile(format))
   end
 
-  def iodata(%__MODULE__{fragments: fragments, mode: mode} = format, args)
+  def fmt(%__MODULE__{fragments: fragments, mode: mode} = format, args)
       when is_list(args) or is_map(args) do
     [apply(Interpreter, mode, [fragments, args]) | newline(format)]
   end
 
-  def chardata(%__MODULE__{fragments: fragments, mode: mode} = format, args)
-      when is_list(args) do
-    [apply(Interpreter, mode, [fragments, args]) | newline(format)]
-  end
-
   def string(format, args) do
-    IO.iodata_to_binary(iodata(format, args))
+    :unicode.characters_to_binary(fmt(format, args))
   end
 
   def puts(device \\ :stdio, format, args) do
@@ -147,18 +142,18 @@ defmodule Format do
   end
 
   defp io_request(pid, {:write, format, args}) when node(pid) == node() do
-    data = :unicode.characters_to_binary(chardata(format, args))
+    data = string(format, args)
     {:put_chars, :unicode, data}
   end
   defp io_request(_pid, {:write, format, args}) do
-    {:put_chars, :unicode, __MODULE__, :chardata, [format, args]}
+    {:put_chars, :unicode, __MODULE__, :fmt, [format, args]}
   end
   defp io_request(pid, {:binwrite, format, args}) when node(pid) == node() do
-    data = IO.iodata_to_binary(iodata(format, args))
+    data = IO.iodata_to_binary(fmt(format, args))
     {:put_chars, :latin1, data}
   end
   defp io_request(_pid, {:binwrite, format, args}) do
-    {:put_chars, :latin1, __MODULE__, :iodata, [format, args]}
+    {:put_chars, :latin1, __MODULE__, :fmt, [format, args]}
   end
 end
 
