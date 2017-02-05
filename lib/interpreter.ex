@@ -101,7 +101,7 @@ defmodule Format.Interpreter do
       sign: sign, grouping: grouping, alternate: alternate} = format
     base_prefix = integer_base_prefix(alternate, type)
     base = integer_base(type)
-    sign_prefix = integer_sign_prefix(sign, value >= 0)
+    sign_prefix = sign_prefix(sign, value >= 0)
     prefix = [base_prefix | sign_prefix]
     value =
       value
@@ -142,12 +142,12 @@ defmodule Format.Interpreter do
   defp integer_base_prefix(true, :binary), do: '0b'
   defp integer_base_prefix(_, _), do: ''
 
-  defp integer_sign_prefix(:plus, true), do: '+'
-  defp integer_sign_prefix(:plus, false), do: '-'
-  defp integer_sign_prefix(:minus, true), do: ''
-  defp integer_sign_prefix(:minus, false), do: '-'
-  defp integer_sign_prefix(:space, true), do: ' '
-  defp integer_sign_prefix(:space, false), do: '-'
+  defp sign_prefix(:plus, true), do: '+'
+  defp sign_prefix(:plus, false), do: '-'
+  defp sign_prefix(:minus, true), do: ''
+  defp sign_prefix(:minus, false), do: '-'
+  defp sign_prefix(:space, true), do: ' '
+  defp sign_prefix(:space, false), do: '-'
 
   defp format_fractional(value, type, format) when is_float(value) do
     format_float(value, type, format)
@@ -164,7 +164,34 @@ defmodule Format.Interpreter do
     end
   end
 
-  defp format_float(value, type, format), do: ''
+  # TODO: reimplement float printing & don't rely on erlang
+  defp format_float(value, type, format) do
+    %{fill: fill, align: align, width: width, precision: precision, sign: sign} = format
+    erlang_format = erlang_format_float(type, precision)
+    formatted = :io_lib.format(erlang_format, [abs(value)])
+
+    sign_prefix = sign_prefix(sign, value >= 0)
+    formatted = maybe_upcase(formatted, type in [:upper_exponent, :upper_general])
+    formatted = [sign_prefix | formatted]
+    if width do
+      pad(formatted, IO.iodata_length(formatted), width, fill, align || :right)
+    else
+      formatted
+    end
+  end
+
+  defp erlang_format_float(:float, nil),
+    do: '~f'
+  defp erlang_format_float(:float, prec),
+    do: '~.#{prec}f'
+  defp erlang_format_float(type, nil) when type in [:exponent, :upper_exponent],
+    do: '~e'
+  defp erlang_format_float(type, prec) when type in [:exponent, :upper_exponent],
+    do: '~.#{prec}e'
+  defp erlang_format_float(type, nil) when type in [:general, :upper_general],
+    do: '~g'
+  defp erlang_format_float(type, prec) when type in [:general, :upper_general],
+    do: '~.#{prec}g'
 
   defp custom_display(value, custom, format) do
     case Format.Display.custom(value, custom, format) do
@@ -184,4 +211,16 @@ defmodule Format.Interpreter do
     do: downcase(rest, acc <> <<char - ?A + ?a>>)
   defp downcase(<<char, rest::binary>>, acc),
     do: downcase(rest, acc <> <<char>>)
+
+  defp maybe_upcase(charlist, true), do: upcase(charlist)
+  defp maybe_upcase(charlist, false), do: charlist
+
+  defp upcase([]),
+    do: []
+  defp upcase([char | rest]) when char in ?a..?z,
+    do: [char - ?a + ?A | upcase(rest)]
+  defp upcase([nested | rest]) when is_list(nested),
+    do: [upcase(nested) | upcase(rest)]
+  defp upcase([char | rest]),
+    do: [char | upcase(rest)]
 end
