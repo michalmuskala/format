@@ -1,11 +1,15 @@
 defmodule Format.Compiler do
   def compile(format_string) do
     {fragments, mode} = compile(format_string, [], nil)
-    {fragments, format_string, mode || :seq}
+    {fragments, format_string, mode}
   end
 
+  defp final_mode(nil), do: :positional
+  defp final_mode({:positional, _next}), do: :positional
+  defp final_mode(:named), do: :named
+
   defp compile("", fragments, mode) do
-    {Enum.reverse(fragments), mode}
+    {Enum.reverse(fragments), final_mode(mode)}
   end
   defp compile("{{" <> rest, fragments, mode) do
     {fragment, rest} = read_text(rest, "{")
@@ -14,7 +18,7 @@ defmodule Format.Compiler do
   defp compile("{" <> rest, fragments, mode) do
     {argument, format, rest} = read_argument(rest, "")
     {argument, mode} = compile_argument(argument, mode)
-    format = compile_format(format, argument)
+    format = compile_format(format, mode)
     compile(rest, [{argument, format} | fragments], mode)
   end
   defp compile("}}" <> rest, fragments, mode) do
@@ -93,14 +97,19 @@ defmodule Format.Compiler do
 
   @digits '0123456789'
 
-  defp compile_argument("", mode) when mode in [nil, :index, :seq] do
-    {:next, mode || :seq}
+  defp compile_argument("", {:positional, next}) do
+    {next, {:positional, next + 1}}
   end
-  defp compile_argument(<<digit, _::binary>> = arg, mode)
-      when digit in @digits and mode in [nil, :index, :seq] do
+  defp compile_argument("", nil) do
+    compile_argument("", {:positional, 0})
+  end
+  defp compile_argument(<<digit, _::binary>> = arg, nil) when digit in @digits do
+    compile_argument(arg, {:positional, 0})
+  end
+  defp compile_argument(<<digit, _::binary>> = arg, {:positional, next}) when digit in @digits do
     case Integer.parse(arg) do
       {int, ""} ->
-        {int, :index}
+        {int, {:positional, next}}
       _ ->
         raise "invalid integer argument: #{inspect arg}"
     end
@@ -115,14 +124,14 @@ defmodule Format.Compiler do
     raise "named arguments cannot be mixed with positional ones"
   end
 
-  defp compile_format(format, argument) do
+  defp compile_format(format, mode) do
     {fill, align, rest} = compile_align(format)
     {sign, rest} = compile_sign(rest)
     {alternate, rest} = compile_alternate(rest)
     {sign, fill, rest} = compile_zero(rest, sign, fill)
     {width, rest} = compile_width(rest)
     {grouping, rest} = compile_grouping(rest)
-    {precision, rest} = compile_precision(rest, argument)
+    {precision, rest} = compile_precision(rest, mode)
     {type, rest} = compile_type(rest)
     assert_done(rest)
     %Format.Specification{fill: fill, align: align, sign: sign,
@@ -130,23 +139,34 @@ defmodule Format.Compiler do
                           precision: precision, type: type}
   end
 
-  @types [debug: "?", decimal: "d", octal: "o", hex: "x", upper_hex: "X",
-          char: "c", float: "f", exponent: "e", upper_exponent: "E",
-          general: "g", upper_general: "G", string: "s", display: ""]
-
   defp compile_grouping("_" <> rest),
-    do: {:_, rest}
+    do: {"_", rest}
   defp compile_grouping("," <> rest),
-    do: {:",", rest}
+    do: {",", rest}
   defp compile_grouping(rest),
     do: {nil, rest}
 
+  @integral   [decimal: "d", octal: "o", hex: "x", upper_hex: "X", char: "c"]
+  @fractional [float: "f", exponent: "e", upper_exponent: "E", general: "g",
+               upper_general: "G"]
+  @types      [debug: "?", string: "s"]
+
+  for {name, char} <- @integral do
+    defp compile_type(unquote(char) <> rest),
+      do: {{:integral, unquote(name)}, rest}
+  end
+  for {name, char} <- @fractional do
+    defp compile_type(unquote(char) <> rest),
+      do: {{:fractional, unquote(name)}, rest}
+  end
   for {name, char} <- @types do
     defp compile_type(unquote(char) <> rest),
       do: {unquote(name), rest}
   end
+  defp compile_type(""),
+    do: {:display, ""}
   defp compile_type("%" <> _ = custom),
-    do: {{:custom, custom}, ""}
+    do: {{:display, custom}, ""}
   defp compile_type(type),
     do: raise(ArgumentError, "unknown type: #{inspect type}")
 
@@ -166,26 +186,27 @@ defmodule Format.Compiler do
     end
   end
 
-  defp compile_precision(".*" <> rest, :next) do
-    {:next, rest}
-  end
-  defp compile_precision(".*" <> rest, int) when is_integer(int) and int > 1 do
-    {int - 1, rest}
-  end
-  defp compile_precision(".*" <> _rest, arg) do
-    raise ArgumentError, "cannot read precision preceding argument #{inspect arg}"
-  end
-  defp compile_precision("." <> format, _arg) do
+  defp compile_precision(<<".", digit, _::binary>> = format, mode)
+      when digit in @digits do
+    "." <> format = format
     case Integer.parse(format) do
-      {int, "$" <> rest} ->
+      {int, "$" <> rest} when elem(mode, 0) == :positional ->
         {{:argument, int}, rest}
+      {_int, "$" <> _rest} ->
+        raise "named arguments cannot be mixed with positional ones"
       {int, rest} ->
         {int, rest}
-      :error ->
+    end
+  end
+  defp compile_precision("." <> format, :named) do
+    case String.split(format, "$", parts: 2, trim: true) do
+      [name, rest] ->
+        {{:argument, String.to_atom(name)}, rest}
+      _ ->
         raise ArgumentError, "invalid precision specification"
     end
   end
-  defp compile_precision(rest, _arg) do
+  defp compile_precision(rest, _mode) do
     {nil, rest}
   end
 
@@ -207,11 +228,11 @@ defmodule Format.Compiler do
 
   for {name, char} <- @align do
     defp compile_align(<<char::utf8, unquote(char), rest::binary>>),
-      do: {char, unquote(name), rest}
+      do: {<<char::utf8>>, unquote(name), rest}
     defp compile_align(<<unquote(char), rest::binary>>),
-      do: {?\s, unquote(name), rest}
+      do: {" ", unquote(name), rest}
   end
   defp compile_align(rest),
-    do: {?\s, nil, rest}
+    do: {" ", nil, rest}
 
 end

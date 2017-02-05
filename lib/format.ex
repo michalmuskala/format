@@ -8,6 +8,20 @@ defmodule Format do
                :grouping, :precision, :type]
   end
 
+  @type chardata :: :unicode.chardata
+  @type align :: :left | :right | :center | nil
+  @type sign :: :+ | :- | nil
+  @type count :: pos_integer | {:argument, pos_integer}
+  @type integral :: :decimal | :octal | :hex | :upper_hex | :char
+  @type fractional :: :float | :exponent | :upper_exponent | :general | :upper_general
+  @type type :: :display | {:display, String.t} | :debug | :string
+              | {:integral, integral} | {:fractional, fractional}
+  @type spec :: %Specification{align: align, fill: String.t,
+                               sign: sign, alternate: boolean, width: count,
+                               grouping: String.t, precision: count, type: type}
+  @type t :: %__MODULE__{fragments: [spec], original: String.t,
+                         mode: :positional | :named, newline: boolean}
+
   defmacro __using__(_) do
     quote do
       import Format, only: [sigil_F: 2]
