@@ -128,14 +128,14 @@ defmodule Format.Interpreter do
 
   defp group(value, nil), do: value
   defp group(value, char) do
-    first_len = rem(byte_size(value), 4)
-    first_len = if first_len == 0, do: 4, else: first_len
+    first_len = rem(byte_size(value), 3)
+    first_len = if first_len == 0, do: 3, else: first_len
     <<first_part::binary-size(first_len), rest::binary>> = value
     [first_part | do_group(rest, char)]
   end
 
   defp do_group("", _char), do: []
-  defp do_group(<<left::binary-4, rest::binary>>, char) do
+  defp do_group(<<left::binary-3, rest::binary>>, char) do
     [char, left | do_group(rest, char)]
   end
 
