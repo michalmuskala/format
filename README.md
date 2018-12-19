@@ -1,5 +1,11 @@
 # Format
 
+---
+
+**WARNING**: This library is of alpha quality. There's a lot of missing features and bugs should be expected.
+
+---
+
 Alternative string formatter for Elixir inspired by Python and Rust.
 
 ```elixir
